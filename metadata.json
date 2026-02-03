@@ -1,0 +1,5 @@
+{
+  "name": "Dynamic Image Batch Generator",
+  "description": "A high-end responsive tool to batch generate randomized marketing images with custom text, icons, and QR codes using Canvas API and Gemini for creative variations.",
+  "requestFramePermissions": []
+}
