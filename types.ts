@@ -28,6 +28,8 @@ export interface GeneratorConfig {
   qrCodes: Asset[];
   canvasWidth: number;
   canvasHeight: number;
+  fontMode: 'random' | 'fixed';
+  fontWeight: 'random' | 'bold' | 'normal';
 }
 
 export interface GeneratedItem {
@@ -40,8 +42,10 @@ export interface GeneratedItem {
 
 export interface BeautifyConfig {
   mode: 'standard' | 'camouflage' | 'colorful';
-  primaryColor: 'random' | 'black';
+  primaryColor: 'random' | 'black' | 'colorful';
   randomVariation: 'high' | 'low' | 'artistic';
+  // Add eyeStyle property to support UI selection and state management
+  eyeStyle: string;
 }
 
 export interface BeautifiedQR {

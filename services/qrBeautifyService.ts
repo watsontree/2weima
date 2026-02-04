@@ -8,81 +8,85 @@ const BEAUTIFUL_COLORS = [
   '#1abc9c', '#27ae60', '#2980b9', '#f39c12', '#d35400'
 ];
 
-const DOT_DRAWERS: Record<string, (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void> = {
-  circle: (ctx, x, y, s) => { ctx.beginPath(); ctx.arc(x + s/2, y + s/2, s/2.2, 0, Math.PI*2); ctx.fill(); },
-  square: (ctx, x, y, s) => { ctx.fillRect(x + s*0.05, y + s*0.05, s*0.9, s*0.9); },
-  rounded: (ctx, x, y, s) => { ctx.beginPath(); ctx.roundRect(x + s*0.05, y + s*0.05, s*0.9, s*0.9, s*0.3); ctx.fill(); },
-  diamond: (ctx, x, y, s) => { ctx.beginPath(); ctx.moveTo(x + s/2, y); ctx.lineTo(x + s, y + s/2); ctx.lineTo(x + s/2, y + s); ctx.lineTo(x, y + s/2); ctx.closePath(); ctx.fill(); },
-  liquid: (ctx, x, y, s) => { ctx.beginPath(); ctx.arc(x+s/2, y+s/2, s*0.48, 0, Math.PI*2); ctx.fill(); },
-  hexagon: (ctx, x, y, s) => { ctx.beginPath(); for(let i=0; i<6; i++) { const ang = i*Math.PI/3; ctx.lineTo(x + s/2 + s*0.45*Math.cos(ang), y + s/2 + s*0.45*Math.sin(ang)); } ctx.closePath(); ctx.fill(); },
-  plus: (ctx, x, y, s) => { ctx.fillRect(x+s*0.35, y+s*0.1, s*0.3, s*0.8); ctx.fillRect(x+s*0.1, y+s*0.35, s*0.8, s*0.3); },
-  pentagon: (ctx, x, y, s) => { ctx.beginPath(); for(let i=0; i<5; i++) { const ang = i*2*Math.PI/5 - Math.PI/2; ctx.lineTo(x + s/2 + s*0.45*Math.cos(ang), y + s/2 + s*0.45*Math.sin(ang)); } ctx.closePath(); ctx.fill(); },
+/**
+ * Module Styles: Optimized for data density and scanning contrast.
+ */
+const DOT_DRAWERS: Record<string, (ctx: CanvasRenderingContext2D, x: number, y: number, s: number) => void> = {
+  plain: (ctx, x, y, s) => { ctx.fillRect(x, y, s, s); },
+  liquified: (ctx, x, y, s) => { ctx.beginPath(); ctx.arc(x + s/2, y + s/2, s/2.1, 0, Math.PI * 2); ctx.fill(); },
+  roundLiquified: (ctx, x, y, s) => { ctx.beginPath(); ctx.roundRect(x + s*0.05, y + s*0.05, s*0.9, s*0.9, s*0.35); ctx.fill(); },
+  stripes: (ctx, x, y, s) => { 
+    ctx.save();
+    ctx.translate(x + s/2, y + s/2);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-s*0.5, -s*0.2, s, s*0.4);
+    ctx.restore();
+  },
+  tiles: (ctx, x, y, s) => { 
+    ctx.fillRect(x + s*0.1, y + s*0.1, s*0.35, s*0.35); 
+    ctx.fillRect(x + s*0.55, y + s*0.55, s*0.35, s*0.35); 
+  },
+  largeDot: (ctx, x, y, s) => { ctx.beginPath(); ctx.arc(x + s/2, y + s/2, s*0.4, 0, Math.PI * 2); ctx.fill(); },
+  smallDot: (ctx, x, y, s) => { ctx.beginPath(); ctx.arc(x + s/2, y + s/2, s*0.25, 0, Math.PI * 2); ctx.fill(); },
+  smallSquare: (ctx, x, y, s) => { ctx.fillRect(x + s*0.2, y + s*0.2, s*0.6, s*0.6); },
 };
 
-const drawArtisticEye = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, eyeColor: string, styleIdx: number) => {
-  ctx.save();
-  const pad = s / 7;
-  const innerS = s - pad * 4;
-  const innerX = x + pad * 2;
-  const innerY = y + pad * 2;
-
-  ctx.strokeStyle = eyeColor;
-  ctx.fillStyle = eyeColor;
-  ctx.lineWidth = pad;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-
-  if (styleIdx === 0) { // Elite Metal style
-    const grad = ctx.createLinearGradient(x, y, x + s, y + s);
-    grad.addColorStop(0, '#475569');
-    grad.addColorStop(0.5, '#94a3b8');
-    grad.addColorStop(1, '#334155');
-    ctx.strokeStyle = grad;
-    ctx.strokeRect(x + pad/2, y + pad/2, s - pad, s - pad);
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.roundRect(innerX, innerY, innerS, innerS, innerS * 0.2);
-    ctx.fill();
-  } else if (styleIdx === 1) { // Round Rect Business
-    ctx.beginPath();
-    ctx.roundRect(x + pad/2, y + pad/2, s - pad, s - pad, s * 0.3);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(innerX + innerS/2, innerY + innerS/2, innerS/2, 0, Math.PI * 2);
-    ctx.fill();
-  } else { // High ID Relief
-    ctx.shadowColor = 'rgba(0,0,0,0.2)';
-    ctx.shadowBlur = 4;
-    ctx.shadowOffsetY = 2;
-    ctx.strokeRect(x + pad/2, y + pad/2, s - pad, s - pad);
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    ctx.fillRect(innerX, innerY, innerS, innerS);
+/**
+ * Robust Eye Styles Pool: 
+ * Every style here ensures a 1:1:3:1:1 ratio.
+ */
+const EYE_DRAWERS: Record<string, (ctx: CanvasRenderingContext2D, x: number, y: number, s: number) => void> = {
+  classic: (ctx, x, y, s) => {
+    const p = s / 7;
+    ctx.fillRect(x, y, s, p); 
+    ctx.fillRect(x, y + s - p, s, p); 
+    ctx.fillRect(x, y, p, s); 
+    ctx.fillRect(x + s - p, y, p, s); 
+    ctx.fillRect(x + p * 2, y + p * 2, p * 3, p * 3);
+  },
+  soft_round: (ctx, x, y, s) => {
+    const p = s / 7;
+    ctx.beginPath(); ctx.roundRect(x, y, s, s, p * 1.5); ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.roundRect(x + p, y + p, s - p * 2, s - p * 2, p); ctx.fill();
+    ctx.restore();
+    ctx.beginPath(); ctx.roundRect(x + p * 2, y + p * 2, p * 3, p * 3, p); ctx.fill();
+  },
+  liquid_circle: (ctx, x, y, s) => {
+    const p = s / 7;
+    ctx.beginPath(); ctx.arc(x + s/2, y + s/2, s/2, 0, Math.PI*2); ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.arc(x + s/2, y + s/2, s/2 - p, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(x + s/2, y + s/2, p * 1.5, 0, Math.PI*2); ctx.fill();
+  },
+  heavy_edge: (ctx, x, y, s) => {
+    const p = s / 7;
+    ctx.fillRect(x, y, s, p * 1.2); 
+    ctx.fillRect(x, y + s - p * 1.2, s, p * 1.2); 
+    ctx.fillRect(x, y, p * 1.2, s); 
+    ctx.fillRect(x + s - p * 1.2, y, p * 1.2, s); 
+    ctx.beginPath(); ctx.roundRect(x + p * 2, y + p * 2, p * 3, p * 3, p * 0.5); ctx.fill();
+  },
+  octagon: (ctx, x, y, s) => {
+    const p = s / 7;
+    const drawOct = (ox: number, oy: number, size: number) => {
+      const c = size * 0.25;
+      ctx.beginPath();
+      ctx.moveTo(ox + c, oy); ctx.lineTo(ox + size - c, oy); ctx.lineTo(ox + size, oy + c);
+      ctx.lineTo(ox + size, oy + size - c); ctx.lineTo(ox + size - c, oy + size);
+      ctx.lineTo(ox + c, oy + size); ctx.lineTo(ox, oy + size - c); ctx.lineTo(ox, oy + c);
+      ctx.closePath();
+    };
+    drawOct(x, y, s); ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    drawOct(x + p, y + p, s - p * 2); ctx.fill();
+    ctx.restore();
+    drawOct(x + p * 2, y + p * 2, p * 3); ctx.fill();
   }
-  ctx.restore();
-};
-
-const drawEye = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, borderStyle: number, innerStyle: number) => {
-  ctx.save();
-  const pad = s / 7;
-  const innerS = s - pad * 4;
-  const innerX = x + pad * 2;
-  const innerY = y + pad * 2;
-  ctx.lineWidth = pad;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  switch (borderStyle % 3) {
-    case 0: ctx.strokeRect(x+pad/2, y+pad/2, s-pad, s-pad); break;
-    case 1: ctx.beginPath(); ctx.roundRect(x+pad/2, y+pad/2, s-pad, s-pad, s*0.2); ctx.stroke(); break;
-    case 2: ctx.beginPath(); ctx.roundRect(x+pad/2, y+pad/2, s-pad, s-pad, s*0.4); ctx.stroke(); break;
-  }
-  ctx.fillStyle = ctx.strokeStyle;
-  switch (innerStyle % 3) {
-    case 0: ctx.fillRect(innerX, innerY, innerS, innerS); break;
-    case 1: ctx.beginPath(); ctx.arc(innerX + innerS/2, innerY + innerS/2, innerS/2, 0, Math.PI*2); ctx.fill(); break;
-    case 2: ctx.beginPath(); ctx.roundRect(innerX, innerY, innerS, innerS, innerS*0.3); ctx.fill(); break;
-  }
-  ctx.restore();
 };
 
 export const generateBeautifiedQRs = async (text: string, count: number, config: BeautifyConfig): Promise<BeautifiedQR[]> => {
@@ -92,77 +96,79 @@ export const generateBeautifiedQRs = async (text: string, count: number, config:
   qr.make();
 
   const moduleCount = qr.getModuleCount();
-  const canvasSize = 800;
-  const cellSize = canvasSize / (moduleCount + 4);
-  const offset = cellSize * 2;
+  const canvasSize = 1000;
+  const cellSize = canvasSize / (moduleCount + 8); 
+  const offset = cellSize * 4;
   const dotTypes = Object.keys(DOT_DRAWERS);
+  const eyeTypes = Object.keys(EYE_DRAWERS);
 
   for (let i = 0; i < count; i++) {
     const canvas = document.createElement('canvas');
-    canvas.width = canvasSize;
-    canvas.height = canvasSize;
+    canvas.width = canvasSize; canvas.height = canvasSize;
     const ctx = canvas.getContext('2d')!;
 
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-    const isArtistic = config.randomVariation === 'artistic';
-    const artStyleIdx = Math.floor(Math.random() * 3);
+    const variation = config.randomVariation || 'low';
 
-    if (isArtistic && artStyleIdx === 1) {
-      const grad = ctx.createLinearGradient(0,0,0,canvasSize);
-      grad.addColorStop(0, '#f1f5f9');
-      grad.addColorStop(1, '#e2e8f0');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, canvasSize, canvasSize);
+    // 色彩整合逻辑
+    let baseColor = '#000000';
+    if (variation === 'low') {
+      baseColor = '#000000'; // 标准模式强制纯黑
+    } else if (variation === 'high') {
+      // 高变体模式，每张整体随机一种颜色
+      baseColor = BEAUTIFUL_COLORS[Math.floor(Math.random() * BEAUTIFUL_COLORS.length)];
+    } else if (variation === 'artistic') {
+      baseColor = '#1a1a1a'; // 纯艺术模式下码眼使用固定深色
     }
 
-    const mainColor = isArtistic 
-      ? (artStyleIdx === 2 ? '#0891b2' : '#334155') 
-      : (config.primaryColor === 'black' ? '#000000' : BEAUTIFUL_COLORS[Math.floor(Math.random() * BEAUTIFUL_COLORS.length)]);
-    
-    // Artistic eye color strictly different from body for clarity
-    const eyeColor = isArtistic 
-      ? (artStyleIdx === 0 ? '#0f172a' : (artStyleIdx === 1 ? '#1e293b' : '#155e75'))
-      : mainColor;
+    // 每一张都随机选择码眼样式
+    const randomEyeStyleKey = eyeTypes[Math.floor(Math.random() * eyeTypes.length)];
+    const eyeDrawer = EYE_DRAWERS[randomEyeStyleKey];
+    const styleVariationChance = variation === 'high' ? 0.3 : (variation === 'artistic' ? 0.5 : 0.0);
 
-    ctx.fillStyle = mainColor;
-    ctx.strokeStyle = mainColor;
-
-    const dotTypeIdx = Math.floor(Math.random() * dotTypes.length);
-    const borderIdx = Math.floor(Math.random() * 3);
-    const innerIdx = Math.floor(Math.random() * 3);
-    const styleVariation = config.randomVariation === 'high' ? 0.2 : 0.02;
+    // 每一张都随机选择主渲染引擎（数据点样式）
+    const primaryDotStyleKey = dotTypes[Math.floor(Math.random() * dotTypes.length)];
 
     for (let row = 0; row < moduleCount; row++) {
       for (let col = 0; col < moduleCount; col++) {
-        const isDark = qr.isDark(row, col);
-        if (!isDark) continue;
-        const isEye = (row < 7 && col < 7) || (row < 7 && col >= moduleCount - 7) || (row >= moduleCount - 7 && col < 7);
-        if (isEye) continue;
+        if (!qr.isDark(row, col)) continue;
+        
+        const isNearEye = (row < 8 && col < 8) || 
+                          (row < 8 && col >= moduleCount - 8) || 
+                          (row >= moduleCount - 8 && col < 8);
+        
+        if (isNearEye) continue;
+
         const x = offset + col * cellSize;
         const y = offset + row * cellSize;
-        let drawer = DOT_DRAWERS[dotTypes[dotTypeIdx]];
-        if (isArtistic) {
-          drawer = artStyleIdx === 2 ? DOT_DRAWERS.square : DOT_DRAWERS.rounded;
-        } else if (Math.random() < styleVariation) {
-          drawer = DOT_DRAWERS[dotTypes[Math.floor(Math.random() * dotTypes.length)]];
+        
+        // 模块颜色逻辑
+        if (variation === 'artistic') {
+          // 纯艺术模式下元素模块彩色随机
+          ctx.fillStyle = BEAUTIFUL_COLORS[Math.floor(Math.random() * BEAUTIFUL_COLORS.length)];
+        } else {
+          // 其他模式使用基准色
+          ctx.fillStyle = baseColor;
         }
-        drawer(ctx, x, y, cellSize);
+
+        // 样式分配：主样式 vs 随机变体
+        let drawerKey = primaryDotStyleKey;
+        if (Math.random() < styleVariationChance) {
+          drawerKey = dotTypes[Math.floor(Math.random() * dotTypes.length)];
+        }
+        
+        DOT_DRAWERS[drawerKey](ctx, x, y, cellSize);
       }
     }
 
     const eyeSize = cellSize * 7;
-    if (isArtistic) {
-      drawArtisticEye(ctx, offset, offset, eyeSize, eyeColor, artStyleIdx); 
-      drawArtisticEye(ctx, offset + (moduleCount - 7) * cellSize, offset, eyeSize, eyeColor, artStyleIdx); 
-      drawArtisticEye(ctx, offset, offset + (moduleCount - 7) * cellSize, eyeSize, eyeColor, artStyleIdx); 
-    } else {
-      ctx.strokeStyle = mainColor;
-      drawEye(ctx, offset, offset, eyeSize, borderIdx, innerIdx); 
-      drawEye(ctx, offset + (moduleCount - 7) * cellSize, offset, eyeSize, borderIdx, innerIdx); 
-      drawEye(ctx, offset, offset + (moduleCount - 7) * cellSize, eyeSize, borderIdx, innerIdx); 
-    }
+    ctx.fillStyle = baseColor;
+    
+    eyeDrawer(ctx, offset, offset, eyeSize);
+    eyeDrawer(ctx, offset + (moduleCount - 7) * cellSize, offset, eyeSize);
+    eyeDrawer(ctx, offset, offset + (moduleCount - 7) * cellSize, eyeSize);
 
     results.push({ dataUrl: canvas.toDataURL('image/png'), isScannable: true, score: 100 });
   }

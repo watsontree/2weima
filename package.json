@@ -14,7 +14,8 @@
     "react": "^19.2.4",
     "qr-code-styling": "1.6.0-rc.1",
     "qrcode-generator": "1.4.4",
-    "jsqr": "1.4.0"
+    "jsqr": "1.4.0",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
