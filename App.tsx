@@ -1,76 +1,58 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
-import { Asset, Library, TextLibrary, GeneratorConfig, GeneratedItem, BeautifyConfig, BeautifiedQR, User } from './types';
+import { Asset, AddressAsset, Library, TextLibrary, GeneratorConfig, GeneratedItem, BeautifyConfig, BeautifiedQR, User } from './types';
 import { generateImage } from './services/imageService';
 import { getCreativeVariations } from './services/geminiService';
 import { generateBeautifiedQRs } from './services/qrBeautifyService';
 import { authService } from './services/authService';
 import { storageService } from './services/storageService';
 
-// Extend window interface for aistudio APIs
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
   interface Window {
-    // Fix: Added '?' to match existing property modifiers if defined elsewhere
     aistudio?: AIStudio;
   }
 }
 
 const App: React.FC = () => {
-  // --- Auth State ---
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // --- API Key State ---
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
   const [manualKey, setManualKey] = useState<string>(localStorage.getItem('CUSTOM_GEMINI_API_KEY') || '');
   const [showKey, setShowKey] = useState(false);
 
-  // --- State for Libraries ---
-  const [iconLibraries, setIconLibraries] = useState<Library<Asset>[]>([
-    { id: 'default-icons', name: '默认图标库', items: [], isActive: true }
-  ]);
-  const [qrLibraries, setQrLibraries] = useState<Library<Asset>[]>([
-    { id: 'default-qr', name: '我的二维码库', items: [], isActive: true }
-  ]);
-  const [textLibraries, setTextLibraries] = useState<TextLibrary[]>([
-    { id: 'default-text', name: '默认文案库', content: "群聊：私域引流交流群", isActive: true }
-  ]);
+  const [iconLibraries, setIconLibraries] = useState<Library<Asset>[]>([{ id: 'default-icons', name: '默认图标库', items: [], isActive: true }]);
+  const [qrLibraries, setQrLibraries] = useState<Library<Asset>[]>([{ id: 'default-qr', name: '我的二维码库', items: [], isActive: true }]);
+  const [textLibraries, setTextLibraries] = useState<TextLibrary[]>([{ id: 'default-text', name: '默认文案库', content: "群聊：私域引流交流群", isActive: true }]);
+  const [addressLibraries, setAddressLibraries] = useState<Library<AddressAsset>[]>([{ id: 'default-address', name: '常用地址库', items: [], isActive: true }]);
 
-  // --- UI State ---
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generatedItems, setGeneratedItems] = useState<GeneratedItem[]>([]);
   const [activeTab, setActiveTab] = useState<'icons' | 'text' | 'qr' | 'beautify' | 'results' | 'account'>('beautify');
   const [batchCount, setBatchCount] = useState(5);
-  const [previewItem, setPreviewItem] = useState<GeneratedItem | null>(null);
+  const [previewItem, setPreviewItem] = useState<any>(null);
   const [isZipping, setIsZipping] = useState(false);
 
-  // --- Alert Modal State ---
-  const [alertModal, setAlertModal] = useState<{
-    show: boolean;
-    title: string;
-    message: string;
-    targetTab: 'icons' | 'text' | 'qr' | 'account' | null;
-  }>({ show: false, title: '', message: '', targetTab: null });
+  const [alertModal, setAlertModal] = useState<{show: boolean; title: string; message: string; targetTab: 'icons' | 'text' | 'qr' | 'account' | null; }>({ show: false, title: '', message: '', targetTab: null });
 
   const [textGenerationMode, setTextGenerationMode] = useState<'fixed' | 'ai'>('ai');
   const [fontWeight, setFontWeight] = useState<'random' | 'bold' | 'normal'>('random');
 
   const [beautifyUrl, setBeautifyUrl] = useState('https://example.com');
+  const [newAddressForm, setNewAddressForm] = useState({ name: '', url: '' });
   const [beautifyCount, setBeautifyCount] = useState(12);
   const [beautifiedQRs, setBeautifiedQRs] = useState<BeautifiedQR[]>([]);
   const [isBeautifying, setIsBeautifying] = useState(false);
   const [beautifyConfig, setBeautifyConfig] = useState<BeautifyConfig>({
-    mode: 'camouflage',
-    primaryColor: 'colorful', 
-    randomVariation: 'artistic',
-    eyeStyle: 'classic'
+    mode: 'camouflage', primaryColor: 'colorful', randomVariation: 'artistic', eyeStyle: 'classic'
   });
 
   const [passForm, setPassForm] = useState({ old: '', new: '', confirm: '' });
@@ -80,33 +62,37 @@ const App: React.FC = () => {
   const [uploadTarget, setUploadTarget] = useState<{ type: 'icons' | 'qr', libId: string } | null>(null);
 
   useEffect(() => {
+    if (!currentUser) return;
     const loadSavedData = async () => {
-      const iconPromises = iconLibraries.map(async lib => ({
-        ...lib,
-        items: await storageService.loadAssets(lib.id)
-      }));
+      const iconPromises = iconLibraries.map(async lib => ({ ...lib, items: await storageService.loadAssets(lib.id) }));
       setIconLibraries(await Promise.all(iconPromises));
-      
-      const qrPromises = qrLibraries.map(async lib => ({
-        ...lib,
-        items: await storageService.loadAssets(lib.id)
-      }));
+      const qrPromises = qrLibraries.map(async lib => ({ ...lib, items: await storageService.loadAssets(lib.id) }));
       setQrLibraries(await Promise.all(qrPromises));
+      const addressPromises = addressLibraries.map(async lib => ({ ...lib, items: await storageService.loadAssets(lib.id) }));
+      setAddressLibraries(await Promise.all(addressPromises));
     };
-
     const checkKeyStatus = async () => {
       const storedKey = localStorage.getItem('CUSTOM_GEMINI_API_KEY');
-      if (storedKey) {
-        setHasApiKey(true);
-      } else if (window.aistudio) {
-        const hasSysKey = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(hasSysKey);
-      }
+      if (storedKey) setHasApiKey(true);
     };
-
     loadSavedData();
     checkKeyStatus();
-  }, []);
+  }, [currentUser]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setLoginError('');
+    setTimeout(() => {
+      const user = authService.login(loginForm.username, loginForm.password);
+      if (user) {
+        setCurrentUser(user);
+      } else {
+        setLoginError('账号或密码错误，请重试');
+      }
+      setIsLoggingIn(false);
+    }, 600);
+  };
 
   const handleSaveManualKey = () => {
     if (manualKey.trim()) {
@@ -131,7 +117,6 @@ const App: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || !uploadTarget) return;
-
     const newAssets: Asset[] = await Promise.all(Array.from(files).map(async (file: File) => {
       const reader = new FileReader();
       const dataUrl = await new Promise<string>((resolve) => {
@@ -140,49 +125,41 @@ const App: React.FC = () => {
       });
       return { id: Math.random().toString(36).substr(2, 9), url: dataUrl, name: file.name };
     }));
-
     await storageService.saveAssets(uploadTarget.libId, newAssets);
-
-    if (uploadTarget.type === 'icons') {
-      setIconLibraries(prev => prev.map(l => l.id === uploadTarget.libId ? { ...l, items: [...l.items, ...newAssets] } : l));
-    } else {
-      setQrLibraries(prev => prev.map(l => l.id === uploadTarget.libId ? { ...l, items: [...l.items, ...newAssets] } : l));
-    }
+    if (uploadTarget.type === 'icons') setIconLibraries(prev => prev.map(l => l.id === uploadTarget.libId ? { ...l, items: [...l.items, ...newAssets] } : l));
+    else setQrLibraries(prev => prev.map(l => l.id === uploadTarget.libId ? { ...l, items: [...l.items, ...newAssets] } : l));
     setUploadTarget(null);
   };
 
-  const removeAsset = async (type: 'icons' | 'qr', libId: string, assetId: string) => {
+  const removeAsset = async (type: 'icons' | 'qr' | 'address', libId: string, assetId: string) => {
     await storageService.deleteAsset(assetId);
-    if (type === 'icons') {
-      setIconLibraries(prev => prev.map(l => l.id === libId ? { ...l, items: l.items.filter(a => a.id !== assetId) } : l));
-    } else {
-      setQrLibraries(prev => prev.map(l => l.id === libId ? { ...l, items: l.items.filter(a => a.id !== assetId) } : l));
-    }
+    if (type === 'icons') setIconLibraries(prev => prev.map(l => l.id === libId ? { ...l, items: l.items.filter(a => a.id !== assetId) } : l));
+    else if (type === 'qr') setQrLibraries(prev => prev.map(l => l.id === libId ? { ...l, items: l.items.filter(a => a.id !== assetId) } : l));
+    else if (type === 'address') setAddressLibraries(prev => prev.map(l => l.id === libId ? { ...l, items: l.items.filter(a => a.id !== assetId) } : l));
   };
 
-  // Fix: Implemented toggleLibrary for managing active status of various libraries
-  const toggleLibrary = (type: 'icons' | 'qr' | 'text', id: string) => {
-    if (type === 'icons') {
-      setIconLibraries(prev => prev.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
-    } else if (type === 'qr') {
-      setQrLibraries(prev => prev.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
-    } else if (type === 'text') {
-      setTextLibraries(prev => prev.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
-    }
+  const addAddressToLib = async (libId: string) => {
+    if (!newAddressForm.name || !newAddressForm.url) return;
+    const newAddr: AddressAsset = { id: `addr-${Date.now()}`, name: newAddressForm.name, url: newAddressForm.url };
+    await storageService.saveAssets(libId, [newAddr]);
+    setAddressLibraries(prev => prev.map(l => l.id === libId ? { ...l, items: [...l.items, newAddr] } : l));
+    setNewAddressForm({ name: '', url: '' });
   };
 
-  // Fix: Implemented removeLibrary to allow users to delete libraries
-  const removeLibrary = (type: 'icons' | 'qr' | 'text', id: string) => {
-    if (type === 'icons') {
-      setIconLibraries(prev => prev.filter(l => l.id !== id));
-    } else if (type === 'qr') {
-      setQrLibraries(prev => prev.filter(l => l.id !== id));
-    } else if (type === 'text') {
-      setTextLibraries(prev => prev.filter(l => l.id !== id));
-    }
+  const toggleLibrary = (type: 'icons' | 'qr' | 'text' | 'address', id: string) => {
+    if (type === 'icons') setIconLibraries(prev => prev.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
+    else if (type === 'qr') setQrLibraries(prev => prev.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
+    else if (type === 'text') setTextLibraries(prev => prev.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
+    else if (type === 'address') setAddressLibraries(prev => prev.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
   };
 
-  // Fix: Implemented updateTextContent to handle text library content changes
+  const removeLibrary = (type: 'icons' | 'qr' | 'text' | 'address', id: string) => {
+    if (type === 'icons') setIconLibraries(prev => prev.filter(l => l.id !== id));
+    else if (type === 'qr') setQrLibraries(prev => prev.filter(l => l.id !== id));
+    else if (type === 'text') setTextLibraries(prev => prev.filter(l => l.id !== id));
+    else if (type === 'address') setAddressLibraries(prev => prev.filter(l => l.id !== id));
+  };
+
   const updateTextContent = (id: string, content: string) => {
     setTextLibraries(prev => prev.map(l => l.id === id ? { ...l, content } : l));
   };
@@ -194,8 +171,7 @@ const App: React.FC = () => {
       const count = Math.min(beautifyCount, 20);
       const results = await generateBeautifiedQRs(beautifyUrl, count, beautifyConfig); 
       setBeautifiedQRs(results); 
-    } 
-    finally { setIsBeautifying(false); }
+    } finally { setIsBeautifying(false); }
   };
 
   const importToLibrary = async (dataUrl: string) => {
@@ -224,16 +200,30 @@ const App: React.FC = () => {
     if (activeTextRaw === "") { setAlertModal({ show: true, title: '缺少文案', message: '请输入文案', targetTab: 'text' }); return; }
     if (activeQRs.length === 0) { setAlertModal({ show: true, title: '缺少二维码', message: '请上传二维码或进行美化', targetTab: 'qr' }); return; }
 
-    if (textGenerationMode === 'ai' && !hasApiKey) {
-      setAlertModal({ show: true, title: '秘钥未配置', message: '请前往【账号】页面填写您的 Gemini API Key', targetTab: 'account' });
-      return;
-    }
-
     setIsGenerating(true); setGenerationProgress(0); setActiveTab('results'); setGeneratedItems([]);
 
     try {
       const baseTexts = activeTextRaw.split('\n').filter(t => t.trim() !== '');
-      const finalTexts = textGenerationMode === 'ai' ? await getCreativeVariations(baseTexts, batchCount) : Array.from({length: batchCount}, (_, i) => baseTexts[i % baseTexts.length]);
+      let finalTexts: string[] = [];
+      
+      if (textGenerationMode === 'ai') {
+        try {
+          finalTexts = await getCreativeVariations(baseTexts, batchCount);
+        } catch (aiErr: any) {
+          console.error("AI 生成文案失败:", aiErr);
+          setIsGenerating(false);
+          const msg = aiErr.message || "";
+          if (msg.includes("QUOTA_EXHAUSTED")) {
+            setAlertModal({ show: true, title: '⚠️ AI 额度耗尽', message: '您的 Gemini API 免费额度已用完。请在【账号】页面检查您的 Key。', targetTab: 'account' });
+          } else {
+            setAlertModal({ show: true, title: '❌ AI 生成故障', message: `AI 暂时无法生成文案: ${msg}。系统将尝试按固定文案继续生成。`, targetTab: null });
+            finalTexts = Array.from({length: batchCount}, (_, i) => baseTexts[i % baseTexts.length]);
+          }
+          return;
+        }
+      } else {
+        finalTexts = Array.from({length: batchCount}, (_, i) => baseTexts[i % baseTexts.length]);
+      }
 
       const config: GeneratorConfig = { batchCount, minScale: 0.98, maxScale: 1.02, textPool: finalTexts, icons: activeIcons, qrCodes: activeQRs, canvasWidth: 1200, canvasHeight: 1800, fontMode: 'random', fontWeight };
 
@@ -243,8 +233,7 @@ const App: React.FC = () => {
         const qr = activeQRs[Math.floor(Math.random() * activeQRs.length)];
         try {
           const dataUrl = await generateImage(config, text, icon.url, qr.url);
-          const newItem = { id: `gen-${i}-${Date.now()}`, dataUrl, text, iconId: icon.id, qrId: qr.id };
-          setGeneratedItems(prev => [...prev, newItem]);
+          setGeneratedItems(prev => [...prev, { id: `gen-${i}-${Date.now()}`, dataUrl, text, iconId: icon.id, qrId: qr.id }]);
           setGenerationProgress(Math.round(((i + 1) / batchCount) * 100));
           await new Promise(r => setTimeout(r, 50));
         } catch (err) { console.error(err); }
@@ -256,10 +245,7 @@ const App: React.FC = () => {
     if (generatedItems.length === 0) return;
     setIsZipping(true);
     const zip = new JSZip();
-    generatedItems.forEach((item, i) => {
-      const base64Data = item.dataUrl.split(',')[1];
-      zip.file(`marketing-gen-${i+1}.png`, base64Data, { base64: true });
-    });
+    generatedItems.forEach((item, i) => zip.file(`marketing-gen-${i+1}.png`, item.dataUrl.split(',')[1], { base64: true }));
     const blob = await zip.generateAsync({ type: 'blob' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -276,9 +262,39 @@ const App: React.FC = () => {
     } else { setPassMsg({ type: 'error', text: '原密码错误' }); }
   };
 
+  if (!currentUser) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#F8FAFC] p-6 overflow-hidden relative">
+        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-indigo-200/30 blur-[120px] rounded-full"></div>
+        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-purple-200/30 blur-[120px] rounded-full"></div>
+        <div className="w-full max-w-[460px] bg-white rounded-[3rem] shadow-2xl border border-white p-12 relative z-10 animate-in fade-in zoom-in duration-500">
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-20 h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center text-white font-black text-4xl shadow-2xl shadow-indigo-200 mb-6">G</div>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">欢迎回来</h1>
+            <p className="text-slate-400 mt-2 font-medium">请登录以继续使用画报合成系统</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">管理员账号</label>
+              <input type="text" required className="w-full px-6 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-bold" placeholder="请输入账号" value={loginForm.username} onChange={(e) => setLoginForm({...loginForm, username: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">登录密码</label>
+              <input type="password" required className="w-full px-6 py-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-bold" placeholder="请输入密码" value={loginForm.password} onChange={(e) => setLoginForm({...loginForm, password: e.target.value})} />
+            </div>
+            {loginError && <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold text-center animate-bounce">{loginError}</div>}
+            <button type="submit" disabled={isLoggingIn} className="w-full py-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[1.5rem] font-black shadow-2xl shadow-indigo-200 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"> {isLoggingIn ? <LoadingSpinner /> : '立即进入系统'} </button>
+          </form>
+          <div className="mt-12 pt-8 border-t border-slate-50 text-center">
+            <p className="text-slate-300 text-[11px] font-bold">默认测试凭据: wsadwdf / wsadwdf</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col md:flex-row bg-slate-50 font-sans overflow-hidden relative">
-      {/* Previews and Modals... */}
       {previewItem && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-900/95 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setPreviewItem(null)}>
           <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center gap-6" onClick={(e) => e.stopPropagation()}>
@@ -296,11 +312,11 @@ const App: React.FC = () => {
       {alertModal.show && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm transition-all">
           <div className="w-full max-sm:px-6 w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl p-8 transform animate-[pop_0.3s_ease-out]">
-            <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-6"> <WarningIcon size={32} /> </div>
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 ${alertModal.title.includes('❌') || alertModal.title.includes('⚠️') ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}> <WarningIcon size={32} /> </div>
             <h2 className="text-xl font-black text-slate-900 text-center mb-2">{alertModal.title}</h2>
             <p className="text-slate-500 text-center text-sm leading-relaxed mb-8">{alertModal.message}</p>
             <div className="space-y-3">
-              <button onClick={() => { if (alertModal.targetTab) setActiveTab(alertModal.targetTab); setAlertModal({ ...alertModal, show: false }); }} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"> {alertModal.targetTab ? '立即前往' : '确 认'} </button>
+              <button onClick={() => { if (alertModal.targetTab) setActiveTab(alertModal.targetTab); setAlertModal({ ...alertModal, show: false }); }} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"> {alertModal.targetTab ? '立即前往设置' : '确 认'} </button>
               <button onClick={() => setAlertModal({ ...alertModal, show: false })} className="w-full py-4 bg-slate-50 hover:bg-slate-100 text-slate-400 rounded-2xl font-bold transition-all"> 关 闭 </button>
             </div>
           </div>
@@ -336,9 +352,9 @@ const App: React.FC = () => {
                         <button onClick={() => setTextGenerationMode('ai')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${textGenerationMode === 'ai' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border-slate-100'}`}>AI 智能</button>
                       </div>
                       <div className="grid grid-cols-3 gap-1.5">
-                        <button onClick={() => setFontWeight('random')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${fontWeight === 'random' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500'}`}>随机重</button>
-                        <button onClick={() => setFontWeight('bold')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${fontWeight === 'bold' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500'}`}>加粗</button>
-                        <button onClick={() => setFontWeight('normal')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${fontWeight === 'normal' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500'}`}>常规</button>
+                        <button onClick={() => setFontWeight('random')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${fontWeight === 'random' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border-slate-100'}`}>随机重</button>
+                        <button onClick={() => setFontWeight('bold')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${fontWeight === 'bold' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border-slate-100'}`}>加粗</button>
+                        <button onClick={() => setFontWeight('normal')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${fontWeight === 'normal' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border-slate-100'}`}>常规</button>
                       </div>
                     </div>
                   </div>
@@ -347,16 +363,47 @@ const App: React.FC = () => {
               )}
               {activeTab === 'qr' && qrLibraries.map(lib => <LibrarySection key={lib.id} title={lib.name} isActive={lib.isActive} onToggle={() => toggleLibrary('qr', lib.id)} onRemove={() => removeLibrary('qr', lib.id)} onAdd={() => triggerUpload('qr', lib.id)}> <div className="grid grid-cols-4 gap-2"> {lib.items.map(item => <AssetItem key={item.id} url={item.url} onRemove={() => removeAsset('qr', lib.id, item.id)} />)} </div> </LibrarySection>)}
               {activeTab === 'beautify' && (
-                <div className="bg-slate-50 p-5 rounded-[2.5rem] border border-slate-100 space-y-6">
-                  <div> <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">目标地址 (URL)</label> <input type="text" className="w-full p-4 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white" value={beautifyUrl} onChange={(e) => setBeautifyUrl(e.target.value)} /> </div>
-                  <div> <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">风格选择 (点击即选)</label>
-                    <div className="flex gap-2">
-                      <button onClick={() => setBeautifyConfig(p => ({ ...p, randomVariation: 'low' }))} className={`flex-1 py-3 text-[10px] font-black rounded-xl border transition-all ${beautifyConfig.randomVariation === 'low' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-100'}`}>标准</button>
-                      <button onClick={() => setBeautifyConfig(p => ({ ...p, randomVariation: 'high' }))} className={`flex-1 py-3 text-[10px] font-black rounded-xl border transition-all ${beautifyConfig.randomVariation === 'high' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-100'}`}>高变体</button>
-                      <button onClick={() => setBeautifyConfig(p => ({ ...p, randomVariation: 'artistic' }))} className={`flex-1 py-3 text-[10px] font-black rounded-xl border transition-all ${beautifyConfig.randomVariation === 'artistic' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-100'}`}>全彩艺术</button>
+                <div className="space-y-6">
+                  <div className="bg-slate-50 p-5 rounded-[2.5rem] border border-slate-100 space-y-6">
+                    <div> <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">目标地址 (URL)</label> <input type="text" className="w-full p-4 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white" value={beautifyUrl} onChange={(e) => setBeautifyUrl(e.target.value)} /> </div>
+                    <div> <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">风格选择</label>
+                      <div className="flex gap-2">
+                        <button onClick={() => setBeautifyConfig(p => ({ ...p, randomVariation: 'low' }))} className={`flex-1 py-3 text-[10px] font-black rounded-xl border transition-all ${beautifyConfig.randomVariation === 'low' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-100'}`}>标准</button>
+                        <button onClick={() => setBeautifyConfig(p => ({ ...p, randomVariation: 'high' }))} className={`flex-1 py-3 text-[10px] font-black rounded-xl border transition-all ${beautifyConfig.randomVariation === 'high' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-100'}`}>高变体</button>
+                        <button onClick={() => setBeautifyConfig(p => ({ ...p, randomVariation: 'artistic' }))} className={`flex-1 py-3 text-[10px] font-black rounded-xl border transition-all ${beautifyConfig.randomVariation === 'artistic' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border-slate-100'}`}>全彩艺术</button>
+                      </div>
                     </div>
+                    <button onClick={runBeautify} disabled={isBeautifying} className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-2xl transition-all"> {isBeautifying ? <LoadingSpinner size={20} /> : '执行 AI 美化渲染'} </button>
                   </div>
-                  <button onClick={runBeautify} disabled={isBeautifying} className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-2xl transition-all"> {isBeautifying ? <LoadingSpinner size={20} /> : '执行 AI 美化渲染'} </button>
+                  
+                  {addressLibraries.map(lib => (
+                    <div key={lib.id} className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">常用地址库</h3>
+                        <div className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center"><NavIcon size={14} /></div>
+                      </div>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                        {lib.items.map(addr => (
+                          <div key={addr.id} className="group relative flex items-center justify-between p-3 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-indigo-100" onClick={() => setBeautifyUrl(addr.url)}>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-black text-slate-700 truncate">{addr.name}</span>
+                              <span className="text-[9px] text-slate-400 truncate opacity-60">{addr.url}</span>
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); removeAsset('address', lib.id, addr.id); }} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-red-500 transition-all">
+                              <TrashIcon size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-50 space-y-2">
+                        <input type="text" placeholder="别名" className="w-full px-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-xl outline-none" value={newAddressForm.name} onChange={(e) => setNewAddressForm({...newAddressForm, name: e.target.value})} />
+                        <div className="flex gap-2">
+                          <input type="text" placeholder="URL 地址" className="flex-1 px-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-xl outline-none" value={newAddressForm.url} onChange={(e) => setNewAddressForm({...newAddressForm, url: e.target.value})} />
+                          <button onClick={() => addAddressToLib(lib.id)} className="px-4 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-slate-800 transition-all">添加</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -372,7 +419,7 @@ const App: React.FC = () => {
               <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-full">{batchCount} 张</span> 
             </div>
             <input type="range" min="1" max="100" className="w-full accent-indigo-600 h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer" value={batchCount} onChange={(e) => setBatchCount(parseInt(e.target.value))} />
-            <button onClick={startGeneration} disabled={isGenerating} className={`w-full h-16 flex items-center justify-center gap-3 rounded-2xl font-black text-white transition-all shadow-2xl ${isGenerating ? 'bg-slate-900' : 'bg-indigo-600 hover:bg-indigo-700'}`}> {isGenerating ? <LoadingSpinner /> : '立即批量合成画报'} </button>
+            <button onClick={startGeneration} disabled={isGenerating} className={`w-full h-16 flex items-center justify-center gap-3 rounded-2xl font-black text-white transition-all shadow-2xl ${isGenerating ? 'bg-slate-900' : 'bg-indigo-600 hover:bg-indigo-700'}`}> {isGenerating ? <div className="flex items-center gap-2"><LoadingSpinner /> <span className="text-sm">正在合成 ({generationProgress}%)</span></div> : '立即批量合成画报'} </button>
           </div>
         </aside>
       )}
@@ -394,43 +441,25 @@ const App: React.FC = () => {
                    <button onClick={handleLogout} className="w-full py-5 bg-red-50 text-red-600 font-bold rounded-2xl mt-10">退出登录</button> 
                  </div>
                  <div className="md:col-span-2 space-y-8">
-                    {/* API Key Configuration - MANUAL POSITION ADDED HERE */}
                     <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
                       <h3 className="text-xl font-black mb-8 flex items-center gap-3"> <div className="w-2 h-8 bg-indigo-600 rounded-full"></div> AI 服务秘钥设置 </h3>
                       <div className="space-y-6">
                         <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
-                          <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">手动输入秘钥 (LocalStorage 存储)</label>
+                          <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">手动输入秘钥</label>
                           <div className="relative">
-                            <input 
-                              type={showKey ? "text" : "password"} 
-                              placeholder="在此粘贴您的 Gemini API Key" 
-                              className="w-full px-6 py-5 bg-white rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
-                              value={manualKey}
-                              onChange={(e) => setManualKey(e.target.value)}
-                            />
-                            <button 
-                              type="button"
-                              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-indigo-600"
-                              onClick={() => setShowKey(!showKey)}
-                            >
-                              {showKey ? "隐藏" : "显示"}
-                            </button>
+                            <input type={showKey ? "text" : "password"} placeholder="在此粘贴您的 Gemini API Key" className={`w-full px-6 py-5 bg-white rounded-2xl border outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm ${!hasApiKey && manualKey ? 'border-amber-300' : 'border-slate-200'}`} value={manualKey} onChange={(e) => setManualKey(e.target.value)} />
+                            <button type="button" className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-indigo-600" onClick={() => setShowKey(!showKey)}> {showKey ? "隐藏" : "显示"} </button>
                           </div>
                           <div className="flex items-center justify-between">
-                             <span className={`text-[10px] font-black ${hasApiKey ? 'text-emerald-500' : 'text-slate-300'}`}>
-                               状态: {hasApiKey ? "● 已配置并可用" : "○ 待配置"}
-                             </span>
-                             <div className="flex gap-2">
-                               <button onClick={handleSaveManualKey} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl hover:bg-indigo-700 transition-all">保存配置</button>
-                             </div>
+                             <span className={`text-[10px] font-black ${hasApiKey ? 'text-emerald-500' : 'text-slate-300'}`}> 状态: {hasApiKey ? "● 已保存秘钥" : "○ 待保存"} </span>
+                             <div className="flex gap-2"> <button onClick={handleSaveManualKey} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl hover:bg-indigo-700 transition-all">保存配置</button> </div>
                           </div>
                         </div>
-                        <p className="text-[10px] text-slate-400 leading-loose">
-                          * 填写秘钥后系统将优先使用手动填写的 Key。如果您没有秘钥，请前往 <a href="https://ai.google.dev/aistudio" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Google AI Studio</a> 免费创建。
-                        </p>
+                        <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 text-[11px] text-amber-700 leading-relaxed">
+                          <strong>温馨提示：</strong> 如果 AI 无法自动生成群名，通常是因为您的免费额度耗尽。
+                        </div>
                       </div>
                     </div>
-
                     <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
                       <h3 className="text-xl font-black mb-8 flex items-center gap-3"> <div className="w-2 h-8 bg-indigo-600 rounded-full"></div> 修改密码 </h3>
                       <form onSubmit={handleChangePassword} className="space-y-6">
@@ -464,7 +493,6 @@ const App: React.FC = () => {
   );
 };
 
-// Sub-components...
 const NavBtn = ({ active, onClick, icon, label }: any) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-2.5 p-3 rounded-2xl transition-all min-w-[64px] ${active ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-500 hover:bg-slate-800 hover:text-white'}`}> {icon} <span className="text-[10px] font-black uppercase tracking-wider">{label}</span> </button>
 );
@@ -481,15 +509,16 @@ const AssetItem = ({ url, onRemove }: any) => (
   <div className="relative group aspect-square rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 shadow-inner"> <img src={url} className="w-full h-full object-cover" /> <button onClick={onRemove} className="absolute inset-0 bg-red-600/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 font-black text-[9px] transition-opacity">移除</button> </div>
 );
 const LoadingSpinner = ({ size = 20 }: any) => ( <svg className="animate-spin" width={size} height={size} viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /> </svg> );
-const WarningIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
-const PlusIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
-const TrashIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>;
+const MagicIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/></svg>;
+const QRIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /><rect x="7" y="14" width="3" height="3" /><path d="M14 14h3v3h-3z" /></svg>;
 const IconSetIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>;
 const TextIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></svg>;
-const QRIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /><rect x="7" y="14" width="3" height="3" /><path d="M14 14h3v3h-3z" /></svg>;
-const MagicIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/></svg>;
 const GalleryIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>;
 const DownloadIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
 const UserIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+const PlusIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
+const TrashIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>;
+const WarningIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+const NavIcon = ({ size = 24 }: any) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>;
 
 export default App;

@@ -5,6 +5,12 @@ export interface Asset {
   name: string;
 }
 
+export interface AddressAsset {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export interface Library<T> {
   id: string;
   name: string;
@@ -44,7 +50,6 @@ export interface BeautifyConfig {
   mode: 'standard' | 'camouflage' | 'colorful';
   primaryColor: 'random' | 'black' | 'colorful';
   randomVariation: 'high' | 'low' | 'artistic';
-  // Add eyeStyle property to support UI selection and state management
   eyeStyle: string;
 }
 
